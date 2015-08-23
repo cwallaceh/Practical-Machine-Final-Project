@@ -1,0 +1,104 @@
+---
+title: "Practical Machine Learning Final Project"
+author: "Carl Handlin"
+date: "Saturday, August 22, 2015"
+output: html_document
+---
+
+###Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, the goal is to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+###Getting and cleaning data
+
+```{r, echo = FALSE, warning=FALSE}
+#Load the libraries
+library(caret)
+library(ggplot2)
+library(rattle)
+library(dplyr)
+```
+
+```{r}
+#Load the dataset
+setwd("C:/Users/dibujoatm/Dropbox/Practical Machine Learning")
+train <- read.csv("pml-training.csv")
+finaltest <- read.csv("pml-testing.csv")
+```
+
+We loaded  the dataset and cleaned for its proper use. In the test data we select those variables that wont help us in our prediction and remove them from the  whole dataset.
+
+```{r}
+#Clean the data from the missing values in the test dataset
+finaltest <- finaltest[,!sapply(finaltest, function(x)all(is.na(x)))]
+train <- train[,(names(train) %in% c(names(sapply(finaltest, function(x)all(!is.na(x)))), "classe"))]
+
+#Clean categorical variables columns 1:7
+finaltest <- finaltest[ -c(1:7)]
+train <- train[ -c(1:7)]
+```
+
+We are left with 52 numerical variables we can use for our prediction. 
+
+```{r}
+colnames(train[,-53])
+```
+
+###Exploratory Data Analysis
+
+We use PCA to try and reduce more variables by dropping the correlated predictors.
+
+```{r}
+set.seed(123)
+preProc <- preProcess(train[,-53],method="pca")
+```
+
+We see that we manage to reduce the variables to 25 components to capture 95% of the variance which is a very good result, so we well use this new data to test with using all the variables to see the impact on the accuracy
+
+###Building the model
+
+First we try fitting a Classification Tree using 10-fold cross validation and no preprocess.
+
+```{r}
+set.seed(123)
+#Linear model
+control <- trainControl(method="cv", 10)
+fit <- train(classe ~ ., data=train, method="rpart", trControl=control)
+fit
+```
+
+The model was built fast but We can see that the accuracy is as good as flipping a coin. So it doesn't work for us.
+
+Next we try now using an "out of the box" Random Forest with a 3-fold cross validation. We know this kinds of models take much time to compute so we must sample the data to create a good model in less time.
+
+```{r}
+set.seed(123)
+#Linear model
+control <- trainControl(method="cv", 3)
+fit <- train(classe ~ ., data=sample_n(train,7500), method="rf", trControl=control, allowParallel=TRUE)
+fit
+```
+
+This model took around 10 minutes to compute and we can see we got a very good accuracy (97.5%) compared to the method "rpart". We know take a look to the confusion matrix to be sure that this model will work for our final submission.
+
+```{r}
+predictions <- predict(fit, newdata=train)
+matrix <- confusionMatrix(predictions, train$classe)
+matrix
+```
+
+We see a really good outcome so we finally predict the test set for the submission:
+
+```{r}
+predictions <- predict(fit, newdata=finaltest[,-53])
+predictions
+```
+
+We uploaded the prediction and got 100% of the answers correct. We show that the random forest prove to be a very good predictor, even if we used only around 40% of the available training set, also by using a 3-fold cross validation we prove that the accuracy was very high and that the model will also perform very good in the final test set.
+
+###References
+
+Ugulino, W.; Cardador, D.; Vega, K.; Velloso, E.; Milidiu, R.; Fuks, H. Wearable Computing: Accelerometers' Data Classification of Body Postures and Movements. Proceedings of 21st Brazilian Symposium on Artificial Intelligence. Advances in Artificial Intelligence - SBIA 2012. In: Lecture Notes in Computer Science. , pp. 52-61. Curitiba, PR: Springer Berlin / Heidelberg, 2012. ISBN 978-3-642-34458-9. DOI: 10.1007/978-3-642-34459-6_6. 
+Cited by 2 (Google Scholar)
+
+Read more: http://groupware.les.inf.puc-rio.br/har#ixzz3jYyhGazN
